@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useChat } from "@/context/ChatContext";
+import { apiService } from "@/services/api";
 import AuroraBackground from "@/components/chat/AuroraBackground";
 import UserAvatar from "@/components/chat/UserAvatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -23,13 +24,11 @@ const Friends: React.FC = () => {
   const navigate = useNavigate();
   const {
     conversations,
-    friends = [], // ← NOW USING REAL FRIENDS FROM API
+    friends = [],
     setActiveConversation,
     createGroup,
+    loadConversations,
   } = useChat();
-
-  console.log("Friends from context:", friends);
-  console.log("Friends length:", friends.length);
 
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -38,17 +37,38 @@ const Friends: React.FC = () => {
 
   const filteredFriends = searchQuery.trim()
     ? friends.filter((f) =>
-        f.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        f.name?.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : friends;
 
-  const handleMessageFriend = (friendId: string) => {
-    const conv = conversations.find(
+  const handleMessageFriend = async (friendId: string) => {
+    // Check if conversation already exists
+    const existingConv = conversations.find(
       (c) => !c.isGroup && c.participants.some((p) => p.id === friendId),
     );
-    if (conv) {
-      setActiveConversation(conv.id);
+
+    if (existingConv) {
+      // Conversation exists, open it
+      setActiveConversation(existingConv.id);
       navigate("/");
+    } else {
+      // Create new conversation
+      try {
+        await apiService.createConversation([Number(friendId)], false);
+        await loadConversations();
+
+        // Find the newly created conversation
+        const newConv = conversations.find(
+          (c) => !c.isGroup && c.participants.some((p) => p.id === friendId),
+        );
+
+        if (newConv) {
+          setActiveConversation(newConv.id);
+        }
+        navigate("/");
+      } catch (error) {
+        console.error("Failed to create conversation:", error);
+      }
     }
   };
 
@@ -271,7 +291,7 @@ const Friends: React.FC = () => {
                                 alt={friend.name}
                               />
                               <AvatarFallback className="bg-gradient-to-br from-primary/50 to-accent/50 text-xs">
-                                {friend.name.slice(0, 2)}
+                                {friend.name?.slice(0, 2)}
                               </AvatarFallback>
                             </Avatar>
                             <span className="text-sm text-foreground truncate">

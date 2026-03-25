@@ -60,6 +60,19 @@ export const apiService = {
     return response.data.user;
   },
 
+  // NEW: Upload profile picture
+  uploadProfilePicture: async (file: File) => {
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    const response = await api.post("/profile/avatar", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+    return response.data.user;
+  },
+
   updateStatus: async (status: "online" | "away" | "offline") => {
     const response = await api.put("/status", { status });
     return response.data;
@@ -117,6 +130,88 @@ export const apiService = {
         content,
         type,
         reply_to: replyTo,
+      },
+    );
+    return response.data.message;
+  },
+
+  // NEW: Send voice message
+  sendVoiceMessage: async (
+    conversationId: number,
+    audioBlob: Blob,
+    duration: number,
+    replyTo?: number,
+  ) => {
+    const formData = new FormData();
+    formData.append("file", audioBlob, "voice-message.webm");
+    formData.append("content", `Voice message (${duration}s)`);
+    formData.append("type", "voice");
+    formData.append("voice_duration", duration.toString());
+    if (replyTo) {
+      formData.append("reply_to", replyTo.toString());
+    }
+
+    const response = await api.post(
+      `/conversations/${conversationId}/messages`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      },
+    );
+    return response.data.message;
+  },
+
+  // NEW: Send image message
+  sendImageMessage: async (
+    conversationId: number,
+    imageFile: File,
+    caption: string = "",
+    replyTo?: number,
+  ) => {
+    const formData = new FormData();
+    formData.append("file", imageFile);
+    formData.append("content", caption || `📷 ${imageFile.name}`);
+    formData.append("type", "image");
+    if (replyTo) {
+      formData.append("reply_to", replyTo.toString());
+    }
+
+    const response = await api.post(
+      `/conversations/${conversationId}/messages`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      },
+    );
+    return response.data.message;
+  },
+
+  // NEW: Send file message
+  sendFileMessage: async (
+    conversationId: number,
+    file: File,
+    caption: string = "",
+    replyTo?: number,
+  ) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("content", caption || `📎 ${file.name}`);
+    formData.append("type", "file");
+    if (replyTo) {
+      formData.append("reply_to", replyTo.toString());
+    }
+
+    const response = await api.post(
+      `/conversations/${conversationId}/messages`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       },
     );
     return response.data.message;
@@ -182,9 +277,9 @@ export const apiService = {
 
   searchUsers: async (query: string) => {
     const response = await api.get("/users/search", {
-      params: { query: query }, // ← CORRECT
+      params: { query: query },
     });
-    return response.data.users || []; // ← Also return the users array
+    return response.data.users || [];
   },
 
   // Users

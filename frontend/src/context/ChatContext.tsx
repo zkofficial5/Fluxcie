@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from "react";
 import { apiService } from "@/services/api";
@@ -79,7 +80,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const [sentRequests, setSentRequests] = useState<FriendRequest[]>([]);
   const [receivedRequests, setReceivedRequests] = useState<FriendRequest[]>([]);
   const [friends, setFriends] = useState<User[]>([]);
-  const [friendsLoaded, setFriendsLoaded] = useState(false);
 
   // Convert auth user to chat user format
   useEffect(() => {
@@ -120,39 +120,38 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [authUser]);
 
-  // Load friends from API
-  const loadFriends = async () => {
-    if (friendsLoaded) return; // Don't reload if already loaded
-
+  // Load friends from API - STABLE with useCallback
+  const loadFriends = useCallback(async () => {
     try {
       const friendsData = await apiService.getFriends();
-      const mappedFriends = friendsData.map((f: any) => ({
-        id: f.id.toString(),
-        name: f.name,
-        avatar:
-          f.avatar ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${f.username}`,
-        status: f.status || "offline",
-        lastSeen: f.lastSeen ? new Date(f.lastSeen) : undefined,
-        bio: f.bio || "",
-      }));
+      const mappedFriends = friendsData
+        .filter((f: any) => f.name && f.username)
+        .map((f: any) => ({
+          id: f.id.toString(),
+          name: f.name || "Unknown",
+          avatar:
+            f.avatar ||
+            `https://api.dicebear.com/7.x/avataaars/svg?seed=${f.username}`,
+          status: f.status || "offline",
+          lastSeen: f.lastSeen ? new Date(f.lastSeen) : undefined,
+          bio: f.bio || "",
+        }));
 
       setFriends(mappedFriends);
-      setFriendsLoaded(true);
     } catch (error) {
       console.error("Failed to load friends:", error);
     }
-  };
+  }, []); // Empty deps - function is stable
 
-  // Load friends on mount - ONLY ONCE
+  // Load friends on mount
   useEffect(() => {
-    if (authUser && !friendsLoaded) {
+    if (authUser) {
       loadFriends();
     }
-  }, [authUser]);
+  }, [authUser, loadFriends]);
 
   // Load friend requests
-  const loadFriendRequests = async () => {
+  const loadFriendRequests = useCallback(async () => {
     try {
       const [sent, received] = await Promise.all([
         apiService.getSentRequests(),
@@ -181,17 +180,17 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Failed to load friend requests:", error);
     }
-  };
+  }, [currentUser?.id]);
 
   // Load friend requests on mount
   useEffect(() => {
     if (authUser) {
       loadFriendRequests();
     }
-  }, [authUser]);
+  }, [authUser, loadFriendRequests]);
 
   // Load conversations
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const convos = await apiService.getConversations();
 
@@ -228,10 +227,10 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Failed to load conversations:", error);
     }
-  };
+  }, []);
 
   // Load messages for a conversation
-  const loadMessages = async (conversationId: string) => {
+  const loadMessages = useCallback(async (conversationId: string) => {
     try {
       const msgs = await apiService.getMessages(Number(conversationId));
 
@@ -254,6 +253,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
             }
           : undefined,
         voiceDuration: m.voiceDuration,
+        filePath: m.filePath,
+        fileName: m.fileName,
+        fileSize: m.fileSize,
       }));
 
       setMessages((prev) => ({
@@ -271,21 +273,21 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Failed to load messages:", error);
     }
-  };
+  }, []);
 
   // Load conversations on mount
   useEffect(() => {
     if (authUser) {
       loadConversations();
     }
-  }, [authUser]);
+  }, [authUser, loadConversations]);
 
   // Load messages when active conversation changes
   useEffect(() => {
     if (activeConversationId) {
       loadMessages(activeConversationId);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, loadMessages]);
 
   const setActiveConversation = (id: string | null) => {
     setActiveConversationId(id);
@@ -453,7 +455,6 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
     try {
       await apiService.acceptFriendRequest(Number(requestId));
       await loadFriendRequests();
-      setFriendsLoaded(false); // Force reload
       await loadFriends();
       await loadConversations();
     } catch (error) {

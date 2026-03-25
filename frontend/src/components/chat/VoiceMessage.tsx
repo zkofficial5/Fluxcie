@@ -1,63 +1,87 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Play, Pause } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React, { useState, useRef, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Play, Pause } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface VoiceMessageProps {
   duration: number;
   isSent: boolean;
+  audioUrl?: string; // NEW: URL to audio file
 }
 
-const VoiceMessage: React.FC<VoiceMessageProps> = ({ duration, isSent }) => {
+const VoiceMessage: React.FC<VoiceMessageProps> = ({
+  duration,
+  isSent,
+  audioUrl,
+}) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number>(0);
 
   const waveformData = useRef(
     Array(30)
       .fill(0)
-      .map(() => 0.2 + Math.random() * 0.8)
+      .map(() => 0.2 + Math.random() * 0.8),
   ).current;
 
   const actualDuration = Math.max(duration, 1);
 
-  const tick = useCallback((timestamp: number) => {
-    if (!lastTimeRef.current) lastTimeRef.current = timestamp;
-    const delta = (timestamp - lastTimeRef.current) / 1000;
-    lastTimeRef.current = timestamp;
-
-    setProgress((prev) => {
-      const next = prev + (delta / actualDuration) * 100 * playbackSpeed;
-      if (next >= 100) {
-        setIsPlaying(false);
-        return 100;
-      }
-      return next;
-    });
-
-    animFrameRef.current = requestAnimationFrame(tick);
-  }, [actualDuration, playbackSpeed]);
-
+  // Initialize audio element
   useEffect(() => {
-    if (isPlaying) {
-      lastTimeRef.current = 0;
-      animFrameRef.current = requestAnimationFrame(tick);
+    if (audioUrl) {
+      const audio = new Audio(audioUrl);
+      audio.playbackRate = playbackSpeed;
+      audioRef.current = audio;
+
+      audio.addEventListener("timeupdate", () => {
+        const percent = (audio.currentTime / audio.duration) * 100;
+        setProgress(percent);
+      });
+
+      audio.addEventListener("ended", () => {
+        setIsPlaying(false);
+        setProgress(100);
+      });
+
+      return () => {
+        audio.pause();
+        audio.src = "";
+      };
     }
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [isPlaying, tick]);
+  }, [audioUrl]);
+
+  // Update playback speed
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const togglePlay = () => {
-    if (progress >= 100) setProgress(0);
+    if (!audioRef.current) {
+      console.error("No audio file available");
+      return;
+    }
+
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      if (progress >= 100) {
+        audioRef.current.currentTime = 0;
+        setProgress(0);
+      }
+      audioRef.current.play().catch((err) => {
+        console.error("Error playing audio:", err);
+      });
+    }
     setIsPlaying(!isPlaying);
   };
 
@@ -70,13 +94,20 @@ const VoiceMessage: React.FC<VoiceMessageProps> = ({ duration, isSent }) => {
   };
 
   const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const newProgress = (clickX / rect.width) * 100;
-    setProgress(Math.max(0, Math.min(100, newProgress)));
+    const newTime = (newProgress / 100) * audioRef.current.duration;
+
+    audioRef.current.currentTime = newTime;
+    setProgress(newProgress);
   };
 
-  const currentTime = (progress / 100) * actualDuration;
+  const currentTime = audioRef.current
+    ? audioRef.current.currentTime
+    : (progress / 100) * actualDuration;
   const progressIndex = Math.floor((progress / 100) * waveformData.length);
 
   return (
@@ -87,14 +118,23 @@ const VoiceMessage: React.FC<VoiceMessageProps> = ({ duration, isSent }) => {
         whileTap={{ scale: 0.9 }}
         onClick={togglePlay}
         className={cn(
-          'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors',
-          isSent ? 'bg-white/20 hover:bg-white/30' : 'bg-primary/20 hover:bg-primary/30'
+          "w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors",
+          isSent
+            ? "bg-white/20 hover:bg-white/30"
+            : "bg-primary/20 hover:bg-primary/30",
         )}
       >
         {isPlaying ? (
-          <Pause className={cn('w-4 h-4', isSent ? 'text-white' : 'text-primary')} />
+          <Pause
+            className={cn("w-4 h-4", isSent ? "text-white" : "text-primary")}
+          />
         ) : (
-          <Play className={cn('w-4 h-4 ml-0.5', isSent ? 'text-white' : 'text-primary')} />
+          <Play
+            className={cn(
+              "w-4 h-4 ml-0.5",
+              isSent ? "text-white" : "text-primary",
+            )}
+          />
         )}
       </motion.button>
 
@@ -107,19 +147,22 @@ const VoiceMessage: React.FC<VoiceMessageProps> = ({ duration, isSent }) => {
           <motion.div
             key={index}
             className={cn(
-              'flex-1 rounded-full transition-colors duration-150',
+              "flex-1 rounded-full transition-colors duration-150",
               index < progressIndex
                 ? isSent
-                  ? 'bg-white/80'
-                  : 'bg-primary'
+                  ? "bg-white/80"
+                  : "bg-primary"
                 : isSent
-                ? 'bg-white/30'
-                : 'bg-muted-foreground/30'
+                  ? "bg-white/30"
+                  : "bg-muted-foreground/30",
             )}
             style={{ height: `${value * 100}%` }}
             animate={
               isPlaying && index === progressIndex
-                ? { scaleY: [1, 1.3, 1], transition: { repeat: Infinity, duration: 0.4 } }
+                ? {
+                    scaleY: [1, 1.3, 1],
+                    transition: { repeat: Infinity, duration: 0.4 },
+                  }
                 : { scaleY: 1 }
             }
           />
@@ -130,8 +173,8 @@ const VoiceMessage: React.FC<VoiceMessageProps> = ({ duration, isSent }) => {
       <div className="flex flex-col items-end gap-0.5 shrink-0">
         <span
           className={cn(
-            'text-xs tabular-nums',
-            isSent ? 'text-white/70' : 'text-muted-foreground'
+            "text-xs tabular-nums",
+            isSent ? "text-white/70" : "text-muted-foreground",
           )}
         >
           {formatTime(isPlaying || progress > 0 ? currentTime : actualDuration)}
@@ -140,8 +183,10 @@ const VoiceMessage: React.FC<VoiceMessageProps> = ({ duration, isSent }) => {
           whileTap={{ scale: 0.9 }}
           onClick={cycleSpeed}
           className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors',
-            isSent ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-primary/20 text-primary hover:bg-primary/30'
+            "text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors",
+            isSent
+              ? "bg-white/20 text-white hover:bg-white/30"
+              : "bg-primary/20 text-primary hover:bg-primary/30",
           )}
         >
           {playbackSpeed}x

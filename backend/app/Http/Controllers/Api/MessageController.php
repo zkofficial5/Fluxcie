@@ -129,11 +129,32 @@ class MessageController extends Controller
         // Increment unread count for other participants
         $conversation->incrementUnreadForOthers($request->user()->id);
 
-        // TODO: Broadcast message via Pusher
+        // Format response to include file data
+        $messageResponse = [
+            'id' => $message->id,
+            'conversation_id' => $message->conversation_id,
+            'sender_id' => $message->sender_id,
+            'content' => $message->content,
+            'type' => $message->type,
+            'created_at' => $message->created_at,
+            'read' => $message->read,
+            'deleted' => $message->deleted,
+            'reactions' => $message->reactions,
+        ];
+
+        if ($message->voice_duration) {
+            $messageResponse['voice_duration'] = $message->voice_duration;
+        }
+
+        if ($filePath) {
+            $messageResponse['file_path'] = $filePath;
+            $messageResponse['file_name'] = $fileName;
+            $messageResponse['file_size'] = $fileSize;
+        }
 
         return response()->json([
             'success' => true,
-            'message' => $message->load(['sender', 'replyToMessage']),
+            'message' => $messageResponse,
         ], 201);
     }
 

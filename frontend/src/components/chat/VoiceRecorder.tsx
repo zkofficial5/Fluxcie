@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, X, Send, Pause, Play } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Mic, X, Send, Pause, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface VoiceRecorderProps {
   isRecording: boolean;
   onStart: () => void;
   onStop: () => void;
   onCancel: () => void;
-  onSend: (duration: number) => void;
+  onSend: (duration: number, audioBlob: Blob) => void;
 }
 
 const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
@@ -20,9 +20,60 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 }) => {
   const [duration, setDuration] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [waveformValues, setWaveformValues] = useState<number[]>(Array(20).fill(0.3));
+  const [waveformValues, setWaveformValues] = useState<number[]>(
+    Array(20).fill(0.3),
+  );
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const waveformIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // NEW: MediaRecorder refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // Start recording when isRecording becomes true
+  useEffect(() => {
+    if (isRecording && !mediaRecorderRef.current) {
+      startRecording();
+    } else if (!isRecording && mediaRecorderRef.current) {
+      stopRecording();
+    }
+  }, [isRecording]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start();
+      onStart();
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("Could not access microphone. Please check permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+    }
+  };
 
   useEffect(() => {
     if (isRecording && !isPaused) {
@@ -34,14 +85,15 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
         setWaveformValues(
           Array(20)
             .fill(0)
-            .map(() => 0.2 + Math.random() * 0.8)
+            .map(() => 0.2 + Math.random() * 0.8),
         );
       }, 100);
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (waveformIntervalRef.current) clearInterval(waveformIntervalRef.current);
+      if (waveformIntervalRef.current)
+        clearInterval(waveformIntervalRef.current);
     };
   }, [isRecording, isPaused]);
 
@@ -50,18 +102,49 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
       setDuration(0);
       setIsPaused(false);
       setWaveformValues(Array(20).fill(0.3));
+      mediaRecorderRef.current = null;
+      audioChunksRef.current = [];
     }
   }, [isRecording]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
   const handleSend = () => {
-    onSend(duration);
-    setDuration(0);
+    stopRecording();
+
+    // Wait a moment for mediaRecorder to finish
+    setTimeout(() => {
+      if (audioChunksRef.current.length > 0) {
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm",
+        });
+        onSend(duration, audioBlob);
+      } else {
+        console.error("No audio data captured");
+        onCancel();
+      }
+    }, 100);
+  };
+
+  const handleCancel = () => {
+    stopRecording();
+    onCancel();
+  };
+
+  const togglePause = () => {
+    if (!mediaRecorderRef.current) return;
+
+    if (mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.pause();
+      setIsPaused(true);
+    } else if (mediaRecorderRef.current.state === "paused") {
+      mediaRecorderRef.current.resume();
+      setIsPaused(false);
+    }
   };
 
   return (
@@ -78,7 +161,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
-              onClick={onCancel}
+              onClick={handleCancel}
               className="p-3 rounded-full bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors"
             >
               <X className="w-5 h-5" />
@@ -112,10 +195,14 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
-              onClick={() => setIsPaused(!isPaused)}
+              onClick={togglePause}
               className="p-3 rounded-full bg-glass-border/30 hover:bg-glass-border/50 transition-colors"
             >
-              {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+              {isPaused ? (
+                <Play className="w-5 h-5" />
+              ) : (
+                <Pause className="w-5 h-5" />
+              )}
             </motion.button>
 
             {/* Send Button */}

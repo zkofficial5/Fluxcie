@@ -53,23 +53,68 @@ const Signup: React.FC = () => {
     e.preventDefault();
     setError("");
 
+    // Validation
+    if (!fullName.trim()) {
+      setError("Full name is required");
+      return;
+    }
+
+    if (!username.trim()) {
+      setError("Username is required");
+      return;
+    }
+
+    if (username.length < 3) {
+      setError("Username must be at least 3 characters");
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      setError("Username can only contain letters, numbers, and underscores");
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    if (!password) {
+      setError("Password is required");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
-      return;
-    }
-
     setIsLoading(true);
     try {
-      await signup(fullName, username, email, password, confirmPassword); // ← Add try-catch
+      await signup(fullName, username, email, password, confirmPassword);
       navigate("/");
     } catch (error: any) {
-      console.log("Signup error:", error.response?.data); // ← ADD THIS
-      setError(error.message || "Failed to create account");
+      console.error("Signup error:", error);
+      // Parse backend validation errors
+      if (error.message.includes("email has already been taken")) {
+        setError("This email is already registered");
+      } else if (error.message.includes("username has already been taken")) {
+        setError("This username is already taken");
+      } else {
+        setError(
+          error.message || "Failed to create account. Please try again.",
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -139,6 +184,7 @@ const Signup: React.FC = () => {
                 accept="image/*"
                 onChange={handleImageUpload}
                 className="hidden"
+                disabled={isLoading}
               />
             </div>
           </motion.div>
@@ -167,6 +213,7 @@ const Signup: React.FC = () => {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="pl-11 h-12 bg-glass border-glass-border/30 focus:border-primary/50 rounded-xl"
+                  disabled={isLoading}
                   required
                 />
               </div>
@@ -182,11 +229,19 @@ const Signup: React.FC = () => {
                   type="text"
                   placeholder="Choose a username"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) =>
+                    setUsername(
+                      e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""),
+                    )
+                  }
                   className="pl-11 h-12 bg-glass border-glass-border/30 focus:border-primary/50 rounded-xl"
+                  disabled={isLoading}
                   required
                 />
               </div>
+              <p className="text-xs text-muted-foreground">
+                Only letters, numbers, and underscores
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -201,6 +256,7 @@ const Signup: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-11 h-12 bg-glass border-glass-border/30 focus:border-primary/50 rounded-xl"
+                  disabled={isLoading}
                   required
                 />
               </div>
@@ -219,6 +275,7 @@ const Signup: React.FC = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-11 h-12 bg-glass border-glass-border/30 focus:border-primary/50 rounded-xl"
+                    disabled={isLoading}
                     required
                   />
                 </div>
@@ -236,6 +293,7 @@ const Signup: React.FC = () => {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="pl-11 h-12 bg-glass border-glass-border/30 focus:border-primary/50 rounded-xl"
+                    disabled={isLoading}
                     required
                   />
                 </div>
@@ -246,6 +304,7 @@ const Signup: React.FC = () => {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+              disabled={isLoading}
             >
               {showPassword ? (
                 <EyeOff className="w-4 h-4" />
@@ -255,11 +314,14 @@ const Signup: React.FC = () => {
               {showPassword ? "Hide" : "Show"} passwords
             </button>
 
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+            <motion.div
+              whileHover={{ scale: isLoading ? 1 : 1.02 }}
+              whileTap={{ scale: isLoading ? 1 : 0.98 }}
+            >
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-12 rounded-xl gradient-primary-soft text-primary-foreground font-semibold glow-primary"
+                className="w-full h-12 rounded-xl gradient-primary-soft text-primary-foreground font-semibold glow-primary disabled:opacity-50"
               >
                 {isLoading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />

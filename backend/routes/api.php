@@ -25,10 +25,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::put('/profile', [AuthController::class, 'updateProfile']);
+    Route::post('/profile/avatar', [AuthController::class, 'uploadAvatar']); // NEW
     Route::put('/status', [AuthController::class, 'updateStatus']);
     
     // User routes - SEARCH MUST COME BEFORE {id}
-    Route::get('/users/search', [FriendController::class, 'searchUsers']); // ← MOVED UP
+    Route::get('/users/search', [FriendController::class, 'searchUsers']);
     Route::get('/users', [UserController::class, 'index']);
     Route::get('/users/{id}', [UserController::class, 'show']);
     Route::get('/users/username/{username}', [UserController::class, 'getByUsername']);
